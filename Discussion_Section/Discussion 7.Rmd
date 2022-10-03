@@ -1,0 +1,123 @@
+---
+title: "Discussion 7"
+author: "Huaiyu"
+date: "October 29, 2019"
+output: html_document
+---
+####Model Checking
+One method evaluate the fit of a model is to use posterior predictive checks:
+
+1). Sample $\theta^{(s)} \sim \theta |y$
+
+2). Sample $y^{rep(s)} \sim y^{rep} | \theta ^ {(s)}$
+
+3). Calculate p-value by $p_B = \frac{1}{S}\sum^S_{s=1}I(T(y^{rep(s)},\theta^{(s)}) \geq T(y, \theta^{(s)}))$
+
+Example. Estimating the risk of tumor in a group of rats
+In the evaluation of drugs for possible clinical application, studies are routinely performed on rodents. For a particular study drawn from the statistical literature, suppose the immediate aim is to estimate $\theta$, the probability of tumor in a population of female laboratory rats of type 'F344' that receive a zero dose of the drug (a control group).
+```{r}
+# [ Binomial hierarchical model (BDA Section 3.3) ]
+# y_j | theta_j ~ind Binom(n_j, theta_j)
+# theta_j | kappa ~iid Beta(r * kappa, (1 - r) * kappa)
+# kappa ~ Gamma(beta, beta)
+
+tumor <- read.csv("rattumor.csv", header = TRUE)
+r <- with(tumor, sum(y) / sum(n)) # "empirical Bayes"
+beta <- 10
+```
+
+(1). Draw plots of prior and posterior density.
+
+```{r}
+# prior predictive
+ns <- 1000
+
+#fill in NA parts
+kappa_s <- rgamma(ns, NA, NA)
+theta_s <- rbeta(ns, NA, NA)
+
+lprior <- function (kappa) {NA} #log(kappa)
+lhood_k <- function (k) { # log(P(y | kappa)) #BDA page 110
+  a <- NA; b <- NA
+  with(tumor, NA)
+} #lgamma(value) is log(Gamma(value))
+
+log_normalize <- function (x) { #transform to general density
+  x <- x - max(x) # avoid underflows
+  exp(x - log(sum(exp(x))))
+}
+#https://www.hongliangjie.com/2011/01/07/logsum/
+
+m <- 100
+k <- seq(0, 6, length = m + 1)[-1]
+pp <- log_normalize(lprior(k))
+pk <- log_normalize(sapply(k, function (x) lprior(x) + lhood_k(x)))
+plot(k, pk, type = "l", ylim = c(0, max(pp, pk)), col = "red") # posterior
+lines(k, pp, lty = 2, col = "blue") # prior
+```
+
+(2) Find posterior predictive.
+```{r}
+#fill in NA parts
+ns <- 1000
+k_s <- sample(k, ns, replace = TRUE, prob = pk) #sampled k
+
+theta_s <- matrix(nrow = ns, ncol = nrow(tumor))
+yrep <- matrix(nrow = ns, ncol = nrow(tumor))
+
+for (j in 1:nrow(tumor)) {
+  theta_s[,j] <- with(tumor, NA)
+  yrep[,j] <- NA
+}
+
+p_data <- with(tumor, y / n)
+yrep <- sweep(yrep, 2, tumor$n, `/`) # switch to proportions
+```
+
+(3) Model Checking
+The relevant goal is not to answer the question, 'Do the data come from the assumed
+model?' (to which the answer is almost always no), but to quantify the discrepancies between data and model, and assess whether they could have arisen by chance, under the model's own assumptions.
+```{r}
+# overall p-value:
+# T(y, t) := |y^(.9) - t^(.5)| - |y^(.1) - t^(.5)|, t^(a) is a-quantile of t
+tm <- apply(theta_s, 1, median) # t^(.5)
+s <- quantile(p_data, c(.1, .9))
+Tdata <- abs(s[2] - tm) - abs(s[1] - tm)
+
+s <- abs(t(apply(yrep, 1, quantile, c(.1, .9))) - tm)
+Trep <- s[,2] - s[,1]
+mean(Trep >= Tdata)
+
+# T(y, t) := sum|y - t|
+Tdata <- NA
+Trep <- NA
+mean(Trep >= Tdata)
+```
+
+
+####Exercise
+As question 2 in midterm, to test if your friend knows classical music, you setup the following game: you play a random piece of classicial music and ask your friend to guess the author; if she guesses correctly, you play a new piece, and so on, until she makes a mistake. Assume that your friend has the same probability $\theta$ of correctly guessing the author of a piece of classical music and that each guess is independent. Thus, if in the i-th round of the game she got $y_i$ correct guesses, the likelihood is $P(y_i|\theta) = \theta^{y_i}(1-\theta)$. You repeated this game for $n = 10$ rounds and overall, your friend got $y_i = 4, 1, 1, 4, 2, 3, 3, 2, 5, 2$ correct guesses. Assuming prior is $\theta \sim Beta(1/2, 0)$ and posterior is $\theta|y \sim Beta(\sum y_i + 1/2, n)$, please conduct model checking with test function $|y^{0.9} - t^{0.5}| - |y^{0.1} - t^{0.5}|$ where $t^{0.5}$ is a quantile of t.
+
+```{r}
+y <- c(4, 1, 1, 4, 2, 3, 3, 2, 5, 2)
+N <- 10000
+
+theta_s <- NA
+yrep <- NA
+
+for (j in 1:length(y)) {
+  theta_s[,j] <- NA
+  yrep[,j] <- NA
+}
+
+# T(y, t) := |y^(.9) - t^(.5)| - |y^(.1) - t^(.5)|, t^(a) is a-quantile of t
+tm <- NA # t^(.5)
+s <- NA
+Tdata <- NA
+
+s <- NA
+Trep <- NA
+mean(Trep >= Tdata)
+```
+
+

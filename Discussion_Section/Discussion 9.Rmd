@@ -1,0 +1,156 @@
+---
+title: "Discussion 9"
+author: "Huaiyu"
+date: "11/10/2019"
+output: html_document
+---
+```{r, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(ggthemes)
+library(rstan)
+library(bayesplot)
+library(gridExtra)
+```
+
+
+####Simple Linear Model in Stan
+
+Exercise. One of the most prominent climate change impacts on planet earth is the decline in annual sea ice extent in the Northern Hemisphere. Let’s explore how sea ice extent is changing over time using a linear model in Stan. The question here is whether sea ice extent is declining in the Northern Hemisphere over time?
+```{r}
+seaice <- read.csv("seaice.csv", stringsAsFactors = F)
+# Adding stringsAsFactors = F means that numeric variables won't be
+# read in as factors/categorical variables
+```
+
+```{r}
+head(seaice)
+```
+
+If for some reason the column names are not read in properly, you can change column names using:
+```{r}
+colnames(seaice) <- c("year", "extent_north", "extent_south")
+```
+
+
+```{r}
+p <- ggplot(seaice) + geom_point(aes(year, extent_north)) + 
+  geom_smooth(aes(year, extent_north), se = FALSE, method = "lm", col = 'red', linetype = 'dashed') + xlab("Extent North")
+
+p + theme_hc()
+```
+
+(1). Preparing the data
+Let’s rename the variables and index the years from 1 to 39. Because in this case, we really want to know is sea ice changing from the start of our dataset to the end of our dataset, not specifically the years 1979 to 2017 which are really far from the year 0. We don’t need our model to estimate what sea ice was like in the year 500, or 600, just over the duration of our dataset. So we set up our year data to index from 1 to 30 years.
+```{r}
+x <- I(seaice$year - 1978)
+y <- seaice$extent_north
+N <- length(seaice$year)
+```
+
+Before we do bayes linear model, let's have a look at linear model directly. Here the intercept is 12.556 and slope is -0.0546, which means negative relationship between time and extent north.
+```{r}
+lm1 <- lm(y ~ x)
+summary(lm1)
+
+lm_alpha <- summary(lm1)$coeff[1]  # the intercept
+lm_beta <- summary(lm1)$coeff[2]  # the slope
+lm_sigma <- sigma(lm1)  # the residual error
+```
+Our dataset for stan involves x = year, y = north extent and sample size N.
+```{r}
+stan_data <- list(N = N, x = x, y = y)
+```
+
+(2). Bayesian Linear Model
+Assume the simple linear model as $y_i = \alpha + \beta \times x_i + e_i$ where $e_i \sim N(0, \sigma^2)$. We can also regard this as $y_i \sim N(\alpha + \beta \times x_i, \sigma^2)$. Here we are implicitly using uniform(-infinity, +infinity) priors for our parameters, which are also known as “flat” priors. You don't need to specify their densities here.
+
+Please try to write stan file and name it as simple_linear_model.stan.
+
+(3). Fit your stan model with iteration 1000 times and 4 chains. How do you know your model has converged? Then compare the estimators of $\alpha, \beta$ and $\sigma$ with the values fitted by lm.
+```{r}
+stan_model1 <- "simple_linear_model.stan"
+fit <- NA
+```
+
+```{r}
+print(fit)
+```
+
+```{r}
+c(lm_alpha, lm_beta, lm_sigma)
+```
+
+
+(4). Extract the posterior value from your fit and then plot multiple estimates from the posterior to visualize the variability in our estimation of the regression line. More specific, firstly plot(y ~ x) and then for i in 1:500, repeat drawing lines based on the scatter plot by abline(a = intercept,b = slope) functions.
+```{r}
+posterior <- NA
+
+plot(y ~ x, pch = 20)
+
+for (i in 1:500) {
+ NA
+}
+
+```
+
+(5). Draw the trace of posterior estimators in different chains. 
+Generate plots which indicate the mean parameter estimates and 90% credible intervals.
+```{r}
+posterior <- NA #trace
+```
+
+```{r}
+NA #posterior intervals
+```
+
+
+(6). Posterior Predictive Check
+For prediction and as another form of model diagnostic, Stan can use random number generators to generate predicted values for each data point, at each iteration. This way we can generate predictions that also represent the uncertainties in our model and our data generation process. We generate these using the Generated Quantities block. This block can be used to get any other information we want about the posterior, or make predictions for new data.
+
+generated quantities {
+ real y_rep[N];
+ 
+ for (n in 1:N) {
+ y_rep[n] = normal_rng(x[n] * beta + alpha, sigma);
+ }
+
+}
+
+Note that vectorization is not supported in the GQ (generated quantities) block, so we have to put it in a loop. 
+
+Now train the stan fit again.
+
+```{r}
+stan_model2 <- "simple_linear_model2.stan"
+fit2 <- stan(file = stan_model2, data = stan_data, iter = 1000, chains = 4)
+```
+
+Extracting the y_rep values from posterior.
+```{r}
+y_rep <- as.matrix(fit2, pars = "y_rep")
+dim(y_rep)
+```
+Dimensions of y_yep are 2000 and 39. Because in each chain, there are 500 samples and we have 4 chains, then there are 2000 rows. Each row is an iteration (single posterior estimate) from the model.
+
+
+We can compare density of y with densities of y over 200 posterior draws and here we see data (dark blue) fit well with our posterior predictions.
+```{r}
+p4 <- ppc_dens_overlay(y, y_rep[1:200, ])
+p4 + theme_hc()
+```
+
+We can also use this to compare estimates of summary statistics. Here the test function is mean and we can find the mean of 
+```{r}
+p5 <- ppc_stat(y = y, yrep = y_rep, stat = "mean")
+p5 + theme_hc()
+```
+
+There are many other plotting functions for creating graphical displays comparing observed data to simulated data from the posterior (or prior) predictive distribution. You can find more details as below.
+https://mc-stan.org/bayesplot/reference/PPC-overview.html
+
+
+You can also think about stan file of general case for linear regression as well as different priors, such as conjugate prior.
+Codes about inv-Wishart in stan file are listed here.
+https://mc-stan.org/docs/2_19/functions-reference/inverse-wishart-distribution.html
+
+

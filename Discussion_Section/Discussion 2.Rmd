@@ -1,0 +1,127 @@
+---
+title: "MA 578 Discussion 2"
+author: "Huaiyu Hu"
+date: "September 16, 2019"
+output:
+  html_document:
+    df_print: paged
+---
+```{r, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(reshape)
+```
+####Monte Carlo approximation
+Why Monte Carlo? When summarizing aspects of a posterior distribution,analytical solutions for posterior distributions are difficult to obtain. By using computational methods, we can approximate arbitrarily complex posterior probability calculations by repeatedly sampling posteriors. Such techniques are known as Monte Carlo methods.
+
+#### Example: Birth Rates
+
+In the 1990s, did women with college degrees have different numbers of children  than women without college degrees? We sample $n_1$ women without bachelor  degrees, denoted $Y_{1,1}, \dots, Y_{n_1, 1}$, and $n_2$ women with college degrees, $Y_{1, 2}, \dots, Y_{n_2, 2}$.Given $Y_{1,1}, \dots, Y_{n_1, 1}|\theta_1 \sim i.i.d. Poisson(\theta_1)$ and $Y_{1, 2}, \dots, Y_{n_2, 2}|\theta_2 \sim i.i.d. Poisson(\theta_2)$.
+
+We are given the group sums and means as below.
+
+- No bachlor: $n_1 = 111$, $\sum Y_i = 217$, $\sum Y_i / n_1 = 1.95$ 
+- Bachlor: $n_2 = 44$, $\sum Y_i = 66$, $\sum Y_i / n_2 = 1.50$
+
+Prior $\theta_1, \theta_2 \sim i.i.d Gamma(a = 2, b = 1)$ and we can try to figure out the posterior distribution.
+
+#### (1). Find Posterior distributions for $\theta_1$ and $\theta_2$.
+
+#########
+Try to find posterior distribution by yourself here.
+#########
+
+#### (2). Draw the plots of prior and posteriors
+
+```{r}
+a = 2
+b = 1
+n1 = 111
+sy1 = 217
+n2 = 44
+sy2 = 66
+
+df = data.frame(
+  theta = seq(0, 5, by = 0.01),
+  prior = dgamma(seq(0, 5, by = 0.01), a, b),
+  #####FIND THE POSERIOR DISTRIBUTIONS
+  pos.theta1 = NA,
+  pos.theta2 = NA
+)
+
+df.long = melt(df, id.vars = 'theta', variable_name = 'dist')
+ggplot(df.long, aes(x = theta, y = value, group = dist, color = dist)) +
+  geom_line() +
+  ylab('probability')
+```
+
+#### (3). Posterior Means, Modes and Confidence Intervals
+We can also calculate the posterior means, modes and 95% quantile-based confidence intervals for $\theta_1$ and $\theta_2$ from their gamma posterior distributions. 
+```{r}
+mean1 <- (a+sy1)/(b+n1) #posterior mean for group 1
+mode1 <- (a+sy1-1)/(b+n1) #posterior mode for group 1
+CI1 <- qgamma(c(0.025, 0.975), a+sy1, b+n1) #posterior 95% CI
+
+print(c(mean1, mode1, CI1))
+
+####FIND THE POSTERIOR MEAN, MODE AND 95% CI FOR GROUP 2
+mean2 <- NA
+mode2 <- NA
+CI2 <- NA
+
+print(c(mean2, mode2, CI2))
+```
+
+
+####(4). Find probability $P(\theta_1 > \theta_2|y_1, y_2)$
+To calculate the probability under these models that the mean number of children of women without bachelor's degrees are higher than the mean number of those with bachelor's degrees $P(\theta_1 > \theta_2 \mid \dots)$, we can use integral as below when assuming $\theta_1$ and $\theta_2$ are independent.
+
+\begin{align}
+P(\theta_1 > \theta_2 \mid y) &= \int_0^\infty \left( \int_0^{\theta_1}
+p(\theta_1 \mid y) p(\theta_2 \mid y) \; d\theta_2 \right) \; d\theta_1 \\
+&= \int_0^\infty \left( \int_0^{\theta_1}
+\text{dgamma}(\theta_1, 219, 112) \times \text{dgamma}(\theta_2, 68, 45) \; d\theta_2 \right) \; d\theta_1 \\
+\end{align}
+
+However, the feasibility of these integration methods depends heavily on the particular details of this model, prior distribution and the probability statement that we are trying to calculate. As an alternative, we will use Monte Carlo approximation, which is based on random sampling.
+
+Since $\theta_1$ and $\theta_2$ are independent, we can sample a pair $(\theta^{(i)}_1, \theta^{(i)}_2)$ from separate samples from $p(\theta_1 \mid y)$ and $p(\theta_2 \mid y)$, such that many such pairs $(\theta^{(i)}_1, \theta^{(i)}_2)$ will (by Monte Carlo estimation) approximate the joint density of $p(\theta_1, \theta_2)$ without needing to calculate or integrate over the joint density by hand.
+
+```{r}
+N = 10000
+####SIMULATE THETA1 AND THETA2 FROM GAMMA DISTRIBUTIONS
+theta1.mc = NA
+theta2.mc = NA
+mean(theta1.mc > theta2.mc)
+```
+
+Therefore, the probability that numbers if children for the women without college degrees is greater than with college degrees is *****.
+
+####(5). Sampling from predictive distributions
+Recall that predictive distributions are distributions of new realizations of a random variable when existing data have been conditioned on and unknown quantities (i.e. parameters) are integrated out.
+
+For example, given a prior distribution $p(\theta)$, how can we calculate the *prior predictive distribution* $p(\tilde{y})$? We can have an analytical solution for the form a posterior predictive distribution for a given model. But we can simply it with many $\theta^{(i)}$ from our posterior distribution on $\theta$, and then sample a $y^{(i)}$ for each $\theta^{(i)}$. 
+
+In our example, we wanna find the predictive probability that an age-40 woman without a college degree would have more children than an age-40 woman with a degree. 
+
+```{r}
+N <- 10000
+####GENERATE THETA1 AND THETA2 FROM POSTERIOR DISTRIBUTIONS
+theta1.mc <- NA
+theta2.mc <-NA
+####GENERATE PREDICTIVE VALUE Y GIVEN NEW THETA
+y1.mc <- NA
+y2.mc <- NA
+
+mean(y1.mc > y2.mc)
+```
+
+```{r}
+####WHAT IF WE WANNA FIND THE PROBABILITY THAT NUMBERS OF CHILDREN IN TWO GROUPS ARE THE SAME?
+
+```
+
+
+Reference.
+A First Course in Bayesian Statistical Methods. Peter D. Hoff. Chaper 3-4. Springer.
+
+

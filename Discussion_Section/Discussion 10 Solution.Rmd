@@ -1,0 +1,116 @@
+---
+title: "Discussion 10 Solution"
+author: "Huaiyu"
+date: "11/19/2019"
+output: html_document
+---
+```{r, warning = FALSE, message = FALSE}
+library(rstan)
+library(bayesplot)
+library(rstanarm)
+```
+
+## Baysian Linear Regression
+Today we see the example of wine quality with the help of rstan and rstanarm package. The goal is to model wine quality based on bayesian linear regression.
+
+### 1. Data
+```{r}
+d <- read.delim("winequality-red.csv", sep = ";")
+d <- d[!duplicated(d), ] # remove the duplicates
+dim(d)
+```
+
+There are 11 predictors as "fixed.acidity", "volatile.acidity", "citric.acid" , "residual.sugar", "chlorides", "free.sulfur.dioxide" , "total.sulfur.dioxide", "density", "pH", "sulphates" and "alcohol" while response is "quality".
+```{r}
+names(d)
+```
+
+Before writing stan file, we need to set up dataset as below.
+```{r}
+ds <- as.data.frame(scale(d))
+y <- ds$quality
+X <- as.matrix(ds[, 1:11])
+stan_data <- list(X = X, K = ncol(X), N = nrow(ds), y = y)
+```
+
+### 2. Bayesian Linear Model
+
+Assume data $y \sim N(\alpha + \beta X, \sigma^2)$ with prior $\alpha \sim N(0, 10^2)$, $\beta \sim N(0, 10^2)$ and $\sigma \sim Cauchy(0, 2.5)$.
+Please write stan file and name it as linear_model.stan.
+
+And then fit your stan model with iteration 1000 times and 4 chains. 
+```{r, echo = T, results = 'hide'}
+stan_model <- "~/Documents/BU_2019_Fall/linear_model.stan"
+fit <- stan(file = stan_model, data = stan_data, iter = 1000, chains = 4)
+```
+```{r, echo = T, results = 'hide'}
+print(fit)
+```
+
+```{r}
+posterior <- extract(fit, permuted = FALSE)
+mcmc_areas(
+  posterior,
+  pars = c(paste0("beta[",1:11,"]")),
+  prob = 0.8, # 80% intervals
+  prob_outer = 0.99, # 99%
+  point_est = "mean"
+)
+```
+
+
+### 3. Posterior Predictive Model Checking
+Compare density and empirical cdf of y repicates with observations y, then have a look at intervals. Is this a good model?
+```{r}
+posterior <- extract(fit)
+yrep <- posterior$y_rep
+p1 <- ppc_dens_overlay(y, yrep[sample(nrow(yrep), 50), ])
+p2 <- ppc_ecdf_overlay(y, yrep[sample(nrow(yrep), 50), ])
+cowplot::plot_grid(p1, p2)
+```
+
+```{r}
+i <- sample(length(y), 50); 
+p1 <- ppc_ribbon(y[i], yrep[, i]); p2_1i <- ppc_intervals(y[i], yrep[, i])
+cowplot::plot_grid(p1, p2_1i, ncol = 1)
+```
+
+```{r}
+summary(lm(y ~ X))
+```
+You can use some techniques from linear model class, such as feature selection with AIC/BIC, detect whether correlation exists between independent variables, add polynomial terms and so on.
+
+#### 4. Rstanarm Package
+In the rstanarm package, the prior must be a call to $R^2$ with its location argument specified or NULL, which would indicate a standard uniform prior for the $R^2$. The choice of prior here is based on design matrix, and more details are here: https://cran.r-project.org/web/packages/rstanarm/vignettes/lm.html.
+
+If you want to specify any of the other types of priors, you'll need to switch to stan_glm. With the default family (gaussian), it will be equivalent to stan_lm. This runs faster than rstan package, and you don't need to write anything about stan file.
+```{r, echo = T, results = 'hide'}
+post <-
+  stan_lm(y ~ X, data = ds, prior = R2(location = 0.5), iter = 1000, chains = 4)
+```
+```{r}
+post
+```
+
+
+```{r}
+plot(post, prob = 0.8)
+plot(post, plotfun = "acf", par = c("Xfixed.acidity", "Xvolatile.acidity", "Xcitric.acid"))
+```
+
+
+```{r}
+pp_check(post, plotfun = "stat", stat = "mean")
+pp_check(post, plotfun = "stat_2d", stat = c("mean", "sd"))
+```
+
+```{r}
+yrep2 <- posterior_predict(post, newdata = ds)
+i <- sample(length(y), 50); 
+p1 <- ppc_ribbon(y[i], yrep2[, i]); p2_1i <- ppc_intervals(y[i], yrep2[, i])
+cowplot::plot_grid(p1, p2_1i, ncol = 1)
+```
+
+In the later lecture, you can also use rstanarm package when analyzing generlized linear model (GLM).
+
+There will be no discussion next week. Happy Thanksgiving Day!

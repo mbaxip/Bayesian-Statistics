@@ -1,0 +1,42 @@
+---
+title: "Problem2_14.13"
+output: html_document
+---
+```{r}
+library(rstan)
+library(bayesplot)
+library(rstanarm)
+```
+## Baysian Linear Regression
+
+### 1. Data
+```{r}
+X1 <- log(c(31.2, 24.0, 19.8, 18.2, 9.6, 6.5, 3.2)) #Body Mass
+X2 <- log(c(10750, 8805, 7500, 7662, 5286, 3724, 2423)) #Body Surface
+Y <- log(c(1113, 982, 908, 842, 626, 430, 281)) #Metabolic Rate
+stan_data <- list(x1 = X1, x2 = X2, N = length(Y), y = Y)
+```
+### 2. Bayesian Linear Model
+
+Assume data $y \sim N(\alpha + \beta X, \sigma^2)$ with prior $\alpha \sim N(0, 10^2)$, $\beta \sim N(0, 10^2)$ and $\sigma \sim Cauchy(0, 2.5)$.
+Please write stan file and name it as linear_model.stan.
+
+And then fit your stan model with iteration 1000 times and 4 chains. 
+```{r, echo = T}
+stan_model <- "~/Documents/BU_2019_Fall/HW6/linear_model_4_13.stan"
+fit <- stan(file = stan_model, data = stan_data, iter = 1000, chains = 4, control=list(adapt_delta=0.99,max_treedepth = 12))
+```
+```{r, echo = T}
+print(fit)
+```
+
+```{r}
+posterior <- extract(fit, permuted = FALSE)
+mcmc_areas(
+  posterior,
+  pars = c("a","b","c","mu1","mu2","sigma","tau1","tau2"),
+  prob = 0.8, # 80% intervals
+  prob_outer = 0.99, # 99%
+  point_est = "mean"
+)
+```

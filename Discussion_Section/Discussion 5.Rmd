@@ -1,0 +1,102 @@
+---
+title: "Discussion 5"
+author: "Huaiyu Hu"
+date: "October 8, 2019"
+output: html_document
+---
+
+####1. Laplace's Approximation
+Example. $Y_i \sim Binomial(N_i, \theta)$, $\theta \sim Beta(\alpha, \beta)$. We have information about $\sum Y_i = 10$ and $\sum N_i = 18$. Given $\alpha = 1, \beta =1$, compare posterior distribution distribution with normal approximation. 
+
+```{r}
+alpha <- 1
+beta <- 1
+sum_y <- 10
+sum_n <- 18
+```
+
+```{r}
+mode <- NA
+var <- NA
+
+t <- seq(0,1,by = 0.02)
+plot(t, dbeta(t, NA, NA), type = "l",
+     xlab = expression(theta), ylab = "density", col = "red")
+lines(t, dnorm(t, NA, NA), lty = 2, col = "blue") # Laplace approx
+abline(v = mode, lty = 3)
+```
+
+####2. Hierarchical Models
+Example. Parallel experiments in eight schools (BDA Section 5.5)
+A study was performed for the Educational Testing Service to analyze the effects of special coaching programs on test scores. Separate randomized experiments were performed to estimate the effects of coaching programs for the SAT-V (Scholastic Aptitude Test- Verbal) in each of eight high schools. The outcome variable in each study was the score on a special administration of the SAT-V, a standardized multiple choice test administered by the Educational Testing Service and used to help colleges make admissions decisions; the scores can vary between 200 and 800, with mean about 500 and standard deviation about 100. The SAT examinations are designed to be resistant to short-term efforts directed specifically toward improving performance on the test; instead they are designed to reflect knowledge acquired and abilities developed over many years of education. Nevertheless, each of the eight schools in this study considered its short-term coaching program to be successful at increasing SAT scores. Also, there was no prior reason to believe that any of the eight programs was more effective than any other or that some were more similar in effect to each other than to any other.
+
+```{r}
+sat <- read.csv("sat.csv", header = TRUE)
+y_mean <- with(sat, weighted.mean(mean, 1 / sd ^ 2)) #y_dot, dot
+#The same as ((28/15^2)+(8/10^2) + (-3/16^2) + (7/11^2) + (-1/9^2) + (1/11^2) + (18/10^2) + (12/18^2))/((1/15^2)+(1/10^2) + (1/16^2) + (1/11^2) + (1/9^2) + (1/11^2) + (1/10^2) + (1/18^2))
+
+mu0 <- 0; kappa0 <- 0 # prior params
+
+
+mu_hat <- function (tau2) #first parameter in mu|y, tau^2
+  with(sat,
+       (sum(mean / (tau2 + sd ^ 2)) + kappa0 * mu0 / tau2) /
+       (sum(1 / (tau2 + sd ^ 2)) + kappa0 / tau2))
+
+V_mu <- function (tau2) #second parameter in mu|y, tau^2
+  with(sat, 1 / (sum(1 / (tau2 + sd ^ 2)) + kappa0 / tau2))
+
+
+log_Ptau <- function (tau) {
+  tau2 <- tau ^ 2
+  mu <- mu_hat(tau2)
+  l <- with(sat, sum((mean - mu) ^ 2 / (sd ^ 2 + tau2))) +
+          kappa0 * (mu0 - mu) ^ 2 / tau2
+  lp <- ifelse(kappa0 > 0, -.5 * log(tau2), 0) + # log prior
+              .5 * log(V_mu(tau2)) - .5 * sum(log(sat$sd ^ 2 + tau2)) - .5 * l
+}
+
+# plot P(tau | y)
+m <- 100
+tau <- seq(0, 30, length = m)[-1]
+lt <- sapply(tau, log_Ptau)
+ptau <- exp(lt - log(sum(exp(lt)))) #scale it to probability #plot(tau, exp(lt))
+plot(tau, ptau, type = "l", xlab = expression(tau),
+     ylab = expression(P(tau~"|"~y)))
+#Marginal posterior density, p(tau|y), for standard deviation of the population of school effects theta_j in the educational testing example.
+tau_m <- sum(tau * ptau) # point estimate: posterior mean
+#Values of tau near zero are most plausible; zero is the most likely value, values of tau larger than 10 are less than half as likely as tau = 0
+```
+
+
+```{r}
+# First check: marginal samples
+ns <- 1000 #samples
+tau2_s <- sample(tau, ns, replace = TRUE, prob = ptau) ^ 2 # tau^2 | y
+mu_s <- rnorm(ns, sapply(tau2_s, mu_hat), sqrt(sapply(tau2_s, V_mu))) # mu | tau^2, y
+
+hist(mu_s, col = "gray", border = "white", xlab = expression(mu),
+     prob = TRUE, main = expression(mu~"|"~y))
+abline(v = mean(mu_s), lwd = 2) # MC-estimated posterior mean
+abline(v = y_mean, lwd = 2, col = "red")
+
+#Mean of mu is closed to y..
+```
+```{r}
+thetat_s <- matrix(nrow = ns, ncol = nrow(sat)) 
+
+for (j in 1:nrow(sat)) {
+  vj <- 1 / (1 / sat$sd[j] ^ 2 + 1 / tau2_s)
+  tj <- (sat$mean[j] / sat$sd[j] ^ 2 + mu_s / tau2_s) * vj
+  thetat_s[, j] <- rnorm(ns, tj, sqrt(vj)) # theta_j | mu, tau^2, y
+}
+
+
+boxplot(thetat_s, names = sat$school, col = "gray", outline = FALSE,
+        main = expression(theta[j]~"|"~y))
+points(sat$mean, pch = 19, col = "red")
+abline(h = y_mean, lty = 2, lwd = 2, col = 2)
+
+#mean of theta is between separate mean (y.j) and pooled mean y..
+```
+

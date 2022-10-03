@@ -1,0 +1,194 @@
+# Problem 3
+
+```{r, echo=TRUE}
+y <- c(13,52, 6,40,10, 7,66,10,10,14,16, 4, 65, 5,11,10,15, 5,76,56,88,24,51, 4, 40, 8,18, 5,16,50,40, 1,36, 5,10,91, 18, 1,18, 6, 1,23,15,18,12,12,17, 3)
+
+n <- length(y)
+
+#Distributions
+
+w_Likelihood <- function(lambda){
+  if (lambda != 0){
+    return((y^lambda - 1)/lambda)
+  }
+  else if (lambda == 0){
+    return(log(y))
+  }
+}
+
+mu_condPosterior <- function(sigma2, lambda){
+  rnorm(1, mean = mean(w_Likelihood(lambda)), sd = sqrt(sigma2/n))
+}
+
+sigma2_condPosterior <- function(mu, lambda){
+  sigma2.hat <- sum((w_Likelihood(lambda)-mu)^2 / (n-1))
+  sigma2.post      <-  (n-1) * (sigma2.hat)/rchisq(1,n-1)
+  return(sigma2.post)
+}
+
+lambda_proposal <- function(lambda){
+  rnorm(1, mean = lambda, sd = 0.2)
+}
+
+log_jointposterior <- function(lambda, mu, sigma2){
+  log_post <- log(1/sqrt(sigma2))
+  w <- w_Likelihood(lambda)
+  for (i in 1:n){
+    log_post <- log_post + log(dnorm(w[i],mean=mu,sd=sqrt(sigma2))) + (lambda-1)*log(y[i])
+  }
+  return(log_post)
+}
+#Starting points 1
+sims = 50000
+lambda <- matrix(0,nrow = sims, ncol = 1)
+lambda[1] <- c(0)
+mu <- matrix(0,nrow = sims, ncol = 1)
+mu[1] <- mean(w_Likelihood(lambda[1]))
+sigma2 <- matrix(0,nrow = sims, ncol = 1)
+sigma2[1] <- var(w_Likelihood(lambda[1]))
+```
+
+```{r, echo=TRUE}
+#MonteCarlo_Hastings 
+MonteCarlo_Hastings <- function(lambda, mu, sigma2) {
+  for (i in 2:sims){
+    mu[i] <- mu_condPosterior(sigma2[i-1], lambda[i-1])
+    sigma2[i] <- sigma2_condPosterior(mu[i], lambda[i-1])
+    lambda[i] <- lambda_proposal(lambda[i-1])
+    r <- min(exp(log_jointposterior(lambda[i],mu[i],sigma2[i]) - log_jointposterior(lambda[i-1],mu[i-1],sigma2[i-1])), 1)
+    
+    if ( r >= runif(1) ) { #Accept
+      lambda[i] <- lambda[i]
+    } else { #Reject
+      lambda[i] <- lambda[i-1]
+    }
+  }
+  
+  MCH_s <- cbind("lambda" = lambda[40000:sims],"mu" = mu[40000:sims], "sigma" = sqrt(sigma2[40000:sims]))
+  print(t(apply(MCH_s,2, function(x) quantile(x, c(.025,.25,.5,.75,.975)))))
+  return(list(lambda,mu,sigma2))
+}
+```
+
+** Quantiles of all Parameters **
+```{r, echo=TRUE}
+params_1 <- MonteCarlo_Hastings(lambda, mu, sigma2)
+
+#Starting points 2
+sims = 50000
+lambda <- matrix(0,nrow = sims, ncol = 1)
+lambda[1] <- c(0.6)
+mu <- matrix(0,nrow = sims, ncol = 1)
+mu[1] <- mean(w_Likelihood(lambda[1]))
+sigma2 <- matrix(0,nrow = sims, ncol = 1)
+sigma2[1] <- var(w_Likelihood(lambda[1]))
+
+params_2 <- MonteCarlo_Hastings(lambda, mu, sigma2)
+```
+
+** Trace Plots for all Parameters **
+```{r, echo=TRUE}
+plot(params_1[[1]], col = "red", main = "Trace Lambda: 2 starting pts", xlab = "Sim Number", ylab = "Lambda", ylim = c(-0.2,0.6))
+par(new=TRUE)
+plot(params_2[[1]], col = "green",main = "Trace Lambda: 2 starting pts", xlab = "Sim Number", ylab = "Lambda", ylim = c(-0.2,0.6))
+legend("topright",col = c("red","green"),
+       legend=c("Starting pt 1","Starting pt 2"),
+       lty = c(1,1,1)) 
+```
+
+```{r, echo=TRUE}
+plot(params_1[[2]], col = "red", main = "Trace Mu: 2 starting pts", xlab = "Sim Number", ylab = "Mu", ylim = c(0,10))
+par(new=TRUE)
+plot(params_2[[2]], col = "green", main = "Trace Mu: 2 starting pts", xlab = "Sim Number", ylab = "Mu", ylim = c(0,10))
+legend("topright",col = c("red","green"),
+       legend=c("Starting pt 1","Starting pt 2"),
+       lty = c(1,1,1)) 
+```
+
+```{r, echo=TRUE}
+plot(sqrt(params_1[[3]]), col = "red", main = "Trace Sigma: 2 starting pts", xlab = "Sim Number", ylab = "Sigma", ylim= c(0,8))
+par(new=TRUE)
+plot(sqrt(params_2[[3]]), col = "green", main = "Trace Sigma: 2 starting pts", xlab = "Sim Number", ylab = "Sigma", ylim = c(0,8))
+legend("topright",col = c("red","green"),
+       legend=c("Starting pt 1","Starting pt 2"),
+       lty = c(1,1,1)) 
+```
+
+** Autocorrelation Plots **
+```{r, echo=TRUE}
+Autocor_l1 <- acf(params_1[[1]][40000:50000], lag.max = 10000, plot = FALSE)
+plot(Autocor_l1, main = "Autocorrelation Lambda Starting pt 1")
+
+Autocor_l2 <- acf(params_2[[1]][40000:50000], lag.max = 10000, plot = FALSE)
+plot(Autocor_l2, main = "Autocorrelation Lambda Starting pt 2")
+
+Autocor_Mu1 <- acf(params_1[[2]][40000:50000], lag.max = 10000, plot = FALSE)
+plot(Autocor_Mu1, main = "Autocorrelation Mu Starting pt 1")
+
+Autocor_Mu2 <- acf(params_2[[2]][40000:50000], lag.max = 10000, plot = FALSE)
+plot(Autocor_Mu2, main = "Autocorrelation Mu Starting pt 2")
+
+Autocor_Sig1 <- acf(sqrt(params_1[[3]][40000:50000]), lag.max = 10000, plot = FALSE)
+plot(Autocor_Sig1, main = "Autocorrelation Sigma Starting pt 1")
+
+Autocor_Sig2 <- acf(params_2[[3]][40000:50000], lag.max = 10000, plot = FALSE)
+plot(Autocor_Sig2, main = "Autocorrelation Sigma Starting pt 2")
+```
+
+** Convergence of Cumulative Averages Diagnostics **
+```{r, echo=TRUE}
+plot(cumsum(params_1[[1]])/c(1:sims), col = "red", ylim = c(0,0.7), main = "Convergence Lambda: 2 starting pts", xlab = "Sim Number", ylab = "Cum Avg Lambda")
+par(new=TRUE)
+plot(cumsum(params_2[[1]])/c(1:sims), col = "green", ylim = c(0,0.7), main = "Convergence Lambda: 2 starting pts", xlab = "Sim Number", ylab = "Cum Avg Lambda")
+legend("topright",col = c("red","green"),
+       legend=c("Starting pt 1","Starting pt 2"),
+       lty = c(1,1,1)) 
+```
+
+```{r, echo=TRUE}
+plot(cumsum(params_1[[2]])/c(1:sims), col = "red", main = "Convergence Mu: 2 starting pts", xlab = "Sim Number", ylab = "Cum Avg Mu", ylim = c(0,10))
+par(new=TRUE)
+plot(cumsum(params_2[[2]])/c(1:sims), col = "green", main = "Convergence Mu: 2 starting pts", xlab = "Sim Number", ylab = "Cum Avg Mu", ylim = c(0,10))
+legend("topright",col = c("red","green"),
+       legend=c("Starting pt 0","Starting pt 0.6"),
+       lty = c(1,1,1)) 
+```
+
+```{r, echo=TRUE}
+plot(cumsum(sqrt(params_1[[3]]))/c(1:sims), col = "red", main = "Convergence Sigma: 2 starting pts", xlab = "Sim Number", ylab = "Cum Avg Sigma", ylim= c(0,8))
+par(new=TRUE)
+plot(cumsum(sqrt(params_2[[3]]))/c(1:sims), col = "green", main = "Convergence Sigma: 2 starting pts", xlab = "Sim Number", ylab = "Cum Avg Sigma", ylim= c(0,8))
+legend("topright",col = c("red","green"),
+       legend=c("Starting pt 1","Starting pt 2"),
+       lty = c(1,1,1)) 
+```
+
+** 95 % Posterior Interval **
+```{r, echo=TRUE}
+lam <- sort(params_1[[1]][40000:50000])[c(250,9750)]
+cat("Posterior Interval Lambda: [",lam, "]")
+mu <- sort(params_1[[2]][40000:50000])[c(250,9750)]
+cat("Posterior Interval Mu: [",mu, "]")
+sig <- sort(sqrt(params_1[[3]][40000:50000]))[c(250,9750)]
+cat("Posterior Interval Sigma: [",sig, "]")
+```
+
+** Predictive Distribution of new Y **
+```{r, echo=TRUE}
+pred_y <- function(mu, sigma2, lambda){
+    pred_w_s <- rnorm(1000, mean = mu, sd = sqrt(sigma2))
+    pred_y_s <- round(exp(log(pred_w_s*lambda + 1)/lambda))
+  
+  pred_y_s
+}
+  
+s_pred_y <- pred_y(params_1[[2]][50000],params_1[[3]][50000],params_1[[1]][50000])
+
+boxplot(s_pred_y, y, col = c("red", "green"), names = c("Predicted Y", "Data Y"), main = "Survival Times: Predicted vs Data")
+```
+
+** 95 % Posterior Interval **
+```{r, echo=TRUE}
+pred_conf <- sort(s_pred_y)[c(25, 975)]
+cat("Posterior Interval Predicted Y: [", pred_conf, "]")
+```

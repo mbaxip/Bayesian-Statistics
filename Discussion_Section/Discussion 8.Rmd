@@ -1,0 +1,155 @@
+---
+title: "Discussion 8"
+author: "Huaiyu Hu"
+date: "November 5, 2019"
+output: html_document
+---
+
+Stan is a new-ish language that offers a more comprehensive approach to learning and implementing Bayesian models that can fit complex data structures. A goal of the Stan development team is to make Bayesian modelling more accessible with clear syntax, a better sampler (sampling here refers to drawing samples out of the Bayesian posterior distribution), and integration with many platforms and including R, RStudio, ggplot2, and Shiny.
+
+Firstly, we need to install rstan package. If there is error when installing package, you can try to update Rtools firstly and then reinstall the package. Rtools: https://cran.r-project.org/bin/windows/Rtools/
+```{r, warning = FALSE, message=FALSE}
+#remove.packages("rstan")
+#install.packages("rstan", repos = "https://cloud.r-project.org/", dependencies = TRUE)
+library(rstan)
+library(ggplot2)
+library(bayesplot)
+```
+
+###Example.1 Eight Schools
+This is an example in BDA 5.5, which studied coaching effects from eight schools. We have met this when learning Hierarchical models.
+
+```{r}
+schools_data <- list(J = 8, 
+                    y = c(28,  8, -3,  7, -1,  1, 18, 12),
+                    sigma = c(15, 10, 16, 11,  9, 11, 10, 18))
+```
+
+We start by writing a Stan program for the model in a text file. If you are using RStudio version 1.2.x or greater, click on File -> New File -> Stan File. Otherwise, open your favorite text editor. Either way, paste in the following and save your work to a file called 8schools.stan in R's working directory (which can be seen by executing getwd())
+
+// saved as 8schools.stan
+data {
+  int<lower=0> J;         // number of schools 
+  real y[J];              // estimated treatment effects
+  real<lower=0> sigma[J]; // standard error of effect estimates 
+}
+parameters {
+  real mu;                // population treatment effect
+  real<lower=0> tau;      // standard deviation in treatment effects
+  vector[J] eta;          // unscaled deviation from mu by school
+}
+transformed parameters {
+  vector[J] theta = mu + tau * eta;        // school treatment effects
+}
+model {
+  eta ~ normal(0, 1);       // prior
+  y ~ normal(theta, sigma); // likelihood
+}
+
+The first paragraph of the above code specifies the data: 
+the number of schools, J; 
+the estimates, y1,...,yJ ; 
+and the standard errors, $\sigma_1,..., \sigma_J$. 
+
+Data are labeled as integer or real and can be vectors (or, more generally, arrays) if dimensions are specified. Data can also be constrained with <lower = ..., upper = ...>; for example, in the above model J has been restricted to be nonnegative and the components of $\sigma$y must all be positive.
+
+The code next introduces the parameters: the unknowns to be estimated in the model fit. These are the school effects, $\theta_j$; the mean, $\mu$, and standard deviation,$\tau$, of the population of school effects, the school-level errors $eta \sim N(0, 1)$, and the effects, $\theta$. 
+In this model, we let $\theta$ be a transformation of $\mu$, $\tau$, and $\tau$ instead of directly declaring $\theta$ as a parameter. By parameterizing this way, the sampler runs more efficiently.
+
+Finally comes the model, which looks similar to how it would be written in this book.
+(Just be careful: in our book, the second argument to the N(·, ·) distribution is the variance; Stan parameterizes using the standard deviation.) We have written the model in vector notation, which is cleaner and also runs faster in Stan by making use of more efficient autodifferentiation. It would also be possible to write the model more explicitly, for example replacing y ~ normal(theta,sigma); with a loop over the J schools, for (j in 1:J) y[j] ~ normal(theta[j],sigma[j]); .
+
+After writing the stan file, we can fit this model to find posterior density with stan() function. Here you need to tell it the stan file and data, and you can also set number of iterations, chain size and so on. 
+
+If there is a problem about divergent, most of cases you can fix it with increasing adapt_delta. Adapt_delta is the target average proposal acceptance probability during Stan's adaptation period, and increasing it will force Stan to take smaller steps. The downside is that sampling will tend to be slower because a smaller step size means that more steps are required. Since the validity of the estimates is not guaranteed if there are post-warmup divergences, the slower sampling is a minor cost.
+
+```{r}
+fit <- stan(file = '8schools.stan', data = schools_data, warmup = 300, iter = 1000, chains = 4, control = list(adapt_delta = 0.99))
+```
+
+```{r}
+print(fit)
+```
+
+When the computations are finished, summaries of the inferences and convergence are displayed. Stan uses a stochastic algorithm and so results will not be identical when re-running it. 
+
+For each parameter, mean is the estimated posterior mean (computed as the average of the saved simulation draws), se mean is the estimated standard error (that is, Monte Carlo uncertainty) of the mean of the simulations, and sd is the standard deviation. Thus, as the number of simulation draws approaches infinity, se mean approaches zero while sd approaches the posterior standard deviation of the parameter.
+
+Then come several quantiles, then the effective sample size $n_{eff}$ (formula (11.8) on page 287) and the potential scale reduction factor $\hat R$ (see (11.4) on page 285). When all the simulated chains have mixed, $\hat R$ = 1. Beyond this, the effective sample size and standard errors give a sense of whether the simulations suffice for practical purposes. Each line of the table shows inference for a single scalar parameter in the model, with the last line displaying inference for the unnormalized log posterior density calculated at each step in Stan. Both simulations show good mixing ($\hat R \approx$ 1), but the effective sample sizes are much different. This sort of variation is expected, as $n_{eff}$ is itself a random variable estimated from simulation draws. The simulation with higher effective sample size has a lower standard error of the mean and more stable estimates.
+
+
+
+Let's extract the result of the fit, and then we can analyze the posterior density.
+inc_warmup: A logical scalar indicating whether to include the warmup draws.
+permuted: A logical scalar indicating whether the draws after the warmup period in each chain should be permuted and merged. If FALSE, the original order is kept. If TRUE, the result will be recorded as list.
+```{r}
+schools_sim <- extract(fit, inc_warmup = TRUE, permuted = FALSE)
+print(dimnames(schools_sim))
+```
+
+
+With the help of bayesplot package, we can draw great Bayesian plots easily. For example, the plots as below are MCMC trace of $\mu$ and $\tau$.
+```{r}
+color_scheme_set("mix-blue-pink")
+p <- mcmc_trace(schools_sim,  pars = c("mu", "tau"), n_warmup = 300,
+                facet_args = list(nrow = 2, labeller = label_parsed))
+p + facet_text(size = 15)
+```
+
+Central posterior uncertainty intervals can be plotted using the mcmc_intervals function. The default is to show 50% intervals (the thick segments) and 90% intervals (the thinner outer lines). These defaults can be changed using the prob and prob_outer arguments, respectively. The points in the above plot are posterior medians.
+```{r}
+color_scheme_set("red")
+mcmc_intervals(schools_sim, pars = c("mu","tau"))
+mcmc_intervals(schools_sim, pars = c(paste0("theta[",1:8,"]")))
+mcmc_intervals(schools_sim, pars = c(paste0("eta[",1:8,"]")))
+```
+To show the uncertainty intervals as shaded areas under the estimated posterior density curves we can use the mcmc_areas function.
+```{r}
+color_scheme_set("red")
+mcmc_areas(
+  schools_sim,
+  pars = c(paste0("theta[",1:8,"]")),
+  prob = 0.8, # 80% intervals
+  prob_outer = 0.99, # 99%
+  point_est = "mean"
+)
+```
+
+The mcmc_hist function plots marginal posterior distributions (combining all chains):
+```{r}
+color_scheme_set("green")
+mcmc_hist(schools_sim, pars = c("mu", "tau"))
+```
+
+If we want to plot log(tau) rather than tau we can either transform the draws in advance or use the transformations argument.
+```{r}
+color_scheme_set("teal")
+mcmc_hist(schools_sim, pars = c("mu", "tau"), transformations = list("tau" = "log"))
+```
+
+To view separate histograms of each of the four Markov chains we can use mcmc_hist_by_chain, which plots each chain in a separate facet in the plot.
+```{r}
+color_scheme_set("brightblue")
+mcmc_hist_by_chain(schools_sim, pars = c("mu", "tau"))
+```
+
+There are many other brilliant plots such as density, scatter plot and so on. You can learn it by yourself according to Referece[5].
+
+
+We can also compute the posterior probability that the effect is larger in school A than in school C:
+```{r}
+schools_sim <- extract(fit)
+mean(schools_sim$theta[,1] > schools_sim$theta[,3])
+```
+
+
+Reference.
+[1]. Intro to Stan. Created by Max Farrell & Isla Myers-Smith. https://ourcodingclub.github.io/2018/04/17/stan-intro.html
+[2]. RStan Getting Started
+https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started
+[3]. BDA Appendix C. Computation in R and Stan.
+http://www.stat.columbia.edu/~gelman/book/software.pdf
+[4]. Jonah Gabry. Plotting MCMC draws using the bayesplot package. 
+https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html
+[5]. bayesplot.
+https://mc-stan.org/bayesplot/
